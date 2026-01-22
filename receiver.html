@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NoopyTV Receiver</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 24px;
+      text-align: center;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Chargement...</div>
+  </div>
+
+  <!-- Google Cast Receiver Framework -->
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  
+  <script>
+    'use strict';
+
+    const TAG = '[NoopyTV]';
+    
+    // Get Cast context and player manager
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+
+    // Configure logging
+    context.setLoggerLevel(cast.framework.LoggerLevel.DEBUG);
+
+    // Intercept LOAD requests to configure HLS properly
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD,
+      (loadRequestData) => {
+        console.log(TAG, 'LOAD intercepted:', loadRequestData);
+        
+        if (loadRequestData.media) {
+          const contentType = loadRequestData.media.contentType;
+          const contentUrl = loadRequestData.media.contentUrl || loadRequestData.media.contentId;
+          
+          console.log(TAG, 'Content URL:', contentUrl);
+          console.log(TAG, 'Content Type:', contentType);
+          
+          // Configure HLS streams for IPTV compatibility
+          if (contentType === 'application/x-mpegurl' || 
+              contentType === 'application/vnd.apple.mpegurl' ||
+              (contentUrl && contentUrl.includes('.m3u8'))) {
+            
+            // Force TS segment format for IPTV streams
+            loadRequestData.media.hlsSegmentFormat = cast.framework.messages.HlsSegmentFormat.TS;
+            loadRequestData.media.hlsVideoSegmentFormat = cast.framework.messages.HlsVideoSegmentFormat.MPEG2_TS;
+            
+            console.log(TAG, 'HLS configured with TS segment format');
+          }
+        }
+        
+        // Hide loading spinner
+        document.getElementById('loading').style.display = 'none';
+        
+        return loadRequestData;
+      }
+    );
+
+    // Handle errors
+    playerManager.addEventListener(
+      cast.framework.events.EventType.ERROR,
+      (event) => {
+        console.error(TAG, 'Playback error:', event);
+        console.error(TAG, 'Error code:', event.detailedErrorCode);
+      }
+    );
+
+    // Log state changes
+    playerManager.addEventListener(
+      cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+      () => {
+        console.log(TAG, 'Player load complete');
+      }
+    );
+
+    playerManager.addEventListener(
+      cast.framework.events.EventType.PLAYING,
+      () => {
+        console.log(TAG, 'Playback started');
+      }
+    );
+
+    // Playback configuration
+    const playbackConfig = new cast.framework.PlaybackConfig();
+    playbackConfig.autoResumeDuration = 5;
+    
+    // Allow all origins for development
+    const options = new cast.framework.CastReceiverOptions();
+    options.playbackConfig = playbackConfig;
+    options.disableIdleTimeout = true;
+
+    // Start the receiver
+    context.start(options);
+    console.log(TAG, 'Custom Receiver initialized');
+  </script>
+</body>
+</html>
